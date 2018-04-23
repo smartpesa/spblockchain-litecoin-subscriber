@@ -120,7 +120,7 @@ namespace SpBlockChainSubscriber
                         ZError error;
                         ZMessage incoming;
                         var poll = ZPollItem.CreateReceiver();
-                        
+
                         while (_isRunning)
                         {
                             try
@@ -154,7 +154,7 @@ namespace SpBlockChainSubscriber
                                                 _log.Debug("- RAW TX (" + transaction.GetHash() + ") -");
                                                 _log.InfoFormat("{0} Inputs Consumed", transaction.Inputs.Count);
                                                 _log.InfoFormat("{0} Outputs Created", transaction.Outputs.Count);
-                                                _log.InfoFormat("AMOUNT TRANSACTED: {0} satoshi", transaction.Outputs.Sum(x =>x.Value));
+                                                _log.InfoFormat("AMOUNT TRANSACTED: {0} LTC", Satoshi2LTC(transaction.Outputs.Sum(x => x.Value)));
                                                 break;
 
                                             default:
@@ -204,6 +204,11 @@ namespace SpBlockChainSubscriber
                 raw[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
             }
             return raw;
+        }
+
+        private decimal Satoshi2LTC(long satoshi)
+        {
+            return satoshi / 100000000m;
         }
     }
 }
