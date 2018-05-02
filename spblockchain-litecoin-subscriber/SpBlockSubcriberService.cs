@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Configuration;
-using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -35,6 +34,31 @@ namespace SpBlockChainSubscriber
             }
         }
 
+        public void ShowMenu()
+        {
+            Console.WriteLine("Please choice:");
+            Console.WriteLine("1. Subscriber txn");
+            Console.WriteLine("2. Create txn");
+            ChoiceMenu();
+        }
+
+        public void ChoiceMenu()
+        {
+            switch (Console.ReadLine())
+            {
+                case "1":
+                    _serverTask.Start();
+                    break;
+                case "2":
+                    CreateRawTransaction();
+                    break;
+
+                default:
+                    ShowMenu();
+                    break;
+            }
+        }
+
         /// <summary>
         ///     Start SpBlockChain service
         /// </summary>
@@ -46,7 +70,8 @@ namespace SpBlockChainSubscriber
             _log.Info("SmartPesa MQ Version: " + ZeroMQ.lib.zmq.LibraryVersion);
             _log.Info("");
             _serverTask = new Task(ZmqTransactionWorker);
-            _serverTask.Start();
+            ShowMenu();
+            //_serverTask.Start();
 
             // setup console event handler
             _closeHandler += new ConsoleCtrlDelegate(ConsoleCtrlCheck);
@@ -209,6 +234,37 @@ namespace SpBlockChainSubscriber
         private decimal Satoshi2LTC(long satoshi)
         {
             return satoshi / 100000000m;
+        }
+
+        public void CreateRawTransaction()
+        {
+            Dictionary<string, object> rPCRequest = new Dictionary<string, object>()
+            {
+                { "jsonrpc", "1.0" },
+                { "id", "testid" },
+                { "method", "createrawtransaction" },
+                { "params", new List<dynamic> {
+                    new Inputs[] {
+                        new Inputs()
+                        {
+                            txid = "txid",
+                            vout = 0
+                        }
+                    },
+                    new Outputs()
+                    {
+                        address = ConfigurationManager.AppSettings["ltcAddress"],
+                        data = "00010203"
+                    }
+                }
+            }};
+
+            string jsonRequest = Newtonsoft.Json.JsonConvert.SerializeObject(rPCRequest);
+            _log.Info("Request: " + jsonRequest);
+            string response = WebUtils.CallRequest(_log, jsonRequest);
+            _log.Info("Response: " + response);
+
+            ShowMenu();
         }
     }
 }
