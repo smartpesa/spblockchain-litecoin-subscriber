@@ -238,6 +238,16 @@ namespace SpBlockChainSubscriber
 
         public void CreateRawTransaction()
         {
+            dynamic obj = new
+            {
+                addrs = ConfigurationManager.AppSettings["ltcAddress"]
+            };
+
+            string jsonUTXO = WebUtils.RequestApi(_log, "api/addrs/utxo", Newtonsoft.Json.JsonConvert.SerializeObject(obj));
+            _log.Info("Response utxo: " + jsonUTXO);
+
+            List<UTXOResponse> uTXOResponse = WebUtils.ParseApiResponse<List<UTXOResponse>>(jsonUTXO);
+
             Dictionary<string, object> rPCRequest = new Dictionary<string, object>()
             {
                 { "jsonrpc", "1.0" },
@@ -247,21 +257,21 @@ namespace SpBlockChainSubscriber
                     new Inputs[] {
                         new Inputs()
                         {
-                            txid = "txid",
+                            txid = uTXOResponse[0].txid,
                             vout = 0
                         }
                     },
-                    new Outputs()
+                    new Dictionary<string, object>()
                     {
-                        address = ConfigurationManager.AppSettings["ltcAddress"],
-                        data = "00010203"
+                        { ConfigurationManager.AppSettings["ltcAddress"], 0.001 },
+                        { "data", "00010203" }
                     }
                 }
             }};
 
             string jsonRequest = Newtonsoft.Json.JsonConvert.SerializeObject(rPCRequest);
             _log.Info("Request: " + jsonRequest);
-            string response = WebUtils.CallRequest(_log, jsonRequest);
+            string response = WebUtils.RequestRPC(_log, jsonRequest);
             _log.Info("Response: " + response);
 
             ShowMenu();

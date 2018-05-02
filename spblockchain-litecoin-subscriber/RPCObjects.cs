@@ -9,11 +9,11 @@ namespace SpBlockChainSubscriber
         public int sequence { get; set; }
     }
 
-    public class Outputs
-    {
-        public string address { get; set; }
-        public string data { get; set; }
-    }
+    //public class Outputs
+    //{
+    //    public string address { get; set; }
+    //    public string data { get; set; }
+    //}
 
     public class RPCResponse
     {

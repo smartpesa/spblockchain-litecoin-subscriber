@@ -3,12 +3,13 @@ using System.Net;
 using System;
 using log4net;
 using System.Configuration;
+using System.Collections.Generic;
 
 namespace SpBlockChainSubscriber
 {
     public class WebUtils
     {
-        public static string CallRequest(ILog log, string jsonParameters = null)
+        public static string RequestRPC(ILog log, string jsonParameters = null)
         {
             HttpWebRequest req = (HttpWebRequest)WebRequest.Create(ConfigurationManager.AppSettings["litecoinFullNode"]);
             req.Method = "POST";
@@ -44,7 +45,7 @@ namespace SpBlockChainSubscriber
             }
         }
 
-        public static T ParseResponse<T>(string json) where T : RPCResponse
+        public static T ParseRPCResponse<T>(string json) where T : RPCResponse
         {
             T result = (T)Activator.CreateInstance(typeof(T));
             try
@@ -57,6 +58,47 @@ namespace SpBlockChainSubscriber
                 {
                     message = ex.Message
                 };
+            }
+            return result;
+        }
+
+        public static string RequestApi(ILog log, string url, string jsonParameters)
+        {
+            HttpWebRequest req = (HttpWebRequest)WebRequest.Create(ConfigurationManager.AppSettings["litecoinInsightApi"] + url);
+            req.Method = "POST";
+            req.ContentType = "application/json";
+            using (var streamWriter = new StreamWriter(req.GetRequestStream()))
+            {
+                streamWriter.Write(jsonParameters);
+                streamWriter.Flush();
+            }
+            try
+            {
+                HttpWebResponse rsp = (HttpWebResponse)req.GetResponse();
+                return GetResponse(rsp);
+            }
+            catch (WebException ex)
+            {
+                log.Error(ex.Message);
+                return GetResponse((HttpWebResponse)ex.Response);
+            }
+            catch (Exception ex)
+            {
+                log.Error(ex.Message);
+                return "{ \"error\": { \"code\" : \"500\", \"message\": \"" + ex.Message + "\" }}";
+            }
+        }
+
+        public static T ParseApiResponse<T>(string json)
+        {
+            T result = (T)Activator.CreateInstance(typeof(T));
+            try
+            {
+                result = Newtonsoft.Json.JsonConvert.DeserializeObject<T>(json);
+            }
+            catch (Exception ex)
+            {
+                //result.error = ex.Message;
             }
             return result;
         }
