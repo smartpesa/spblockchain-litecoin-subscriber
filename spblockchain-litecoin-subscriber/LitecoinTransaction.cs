@@ -15,78 +15,129 @@ namespace SpBlockChainSubscriber
     public class LitecoinTransaction
     {
         private static readonly ILog _log = LogManager.GetLogger(typeof(SpBlockSubcriberService));
-        readonly static Encoding _encoding = Encoding.UTF8;
+        private string _senderAddr;
+        private string _receiveAddr;
+        private decimal _amount;
+        public List<UTXOResponse> _uTXOs { get; set; }
 
         public LitecoinTransaction()
         {
 
         }
 
-        public static void HandleInput(out string receiveAddr, out string amount)
+        public void StartTransaction()
         {
+            try
+            {
+                HandleInput();
+                string txHex = CreateRawTransaction();
+                string signedHex = SignRawTransaction(txHex);
+                if (signedHex == null) return;
+                SendRawTransaction(signedHex);
+
+            }
+            catch (Exception ex)
+            {
+                _log.Error(ex.Message);
+            }
+        }
+
+        public void HandleInput()
+        {
+            Console.WriteLine("Enter sender address:");
+            _senderAddr = Console.ReadLine();
+            _uTXOs = GetListUnspent(_senderAddr);
             Console.WriteLine("Enter receive address:");
-            receiveAddr = Console.ReadLine();
+            _receiveAddr = Console.ReadLine();
             Console.WriteLine("Enter amount (LTC):");
-            amount = Console.ReadLine();
+            while (!decimal.TryParse(Console.ReadLine(), out _amount)) {
+                Console.WriteLine("Enter amount (LTC):");
+            }
         }
 
 
-        public static string CreateRawTransaction(string receiveAddr, string amount)
-        {            
-            BitcoinSecret senderAddr = new BitcoinSecret(ConfigurationManager.AppSettings["ltcPrivateKey"]);
-            BitcoinAddress receiverAddr = BitcoinAddress.Create(receiveAddr, Network.TestNet);
+        public string CreateRawTransaction()
+        {
+            BitcoinAddress senderAddr = BitcoinAddress.Create(_senderAddr, Network.TestNet);
+            BitcoinAddress receiverAddr = BitcoinAddress.Create(_receiveAddr, Network.TestNet);
             BitcoinAddress smartpesaAddr = BitcoinAddress.Create(ConfigurationManager.AppSettings["SmartPesaAddr"], Network.TestNet);
-            
-            decimal sendAmount;
-            decimal.TryParse(amount, out sendAmount);
-            decimal fee = CalcFee(sendAmount);
+
+            decimal minerFee = 0.001m;
+            decimal fee = CalcFee(_amount);
             if (bool.Parse(ConfigurationManager.AppSettings["IncludeFee"]))
             {
-                sendAmount = sendAmount - fee;
+                _amount = _amount - fee;
             }
 
-            Coin[] sendCoins = GetCoinsUnspent(senderAddr.GetAddress(), sendAmount + fee);
+            Coin[] sendCoins = GetTxOuts(senderAddr, _amount + fee + minerFee);
 
             var txBuilder = new TransactionBuilder();
             var tx = txBuilder
                 .AddCoins(sendCoins)
-                .AddKeys(senderAddr.PrivateKey)
-                .Send(receiverAddr, sendAmount.ToString("N2"))
-                .Send(smartpesaAddr, fee.ToString("N2"))
-                .SetChange(senderAddr.GetAddress())
-                .SendFees("0.001")
-                .BuildTransaction(true);
+                .Send(receiverAddr, _amount.ToString())
+                .Send(smartpesaAddr, fee.ToString())
+                .SetChange(senderAddr)
+                .SendFees(minerFee.ToString())
+                .BuildTransaction(false);
 
             _log.Debug(tx);
 
             return tx.ToHex();
         }
 
-        private static Coin[] GetCoinsUnspent(BitcoinPubKeyAddress senderAddr, decimal sendAmount)
+        private List<UTXOResponse> GetListUnspent(string address)
         {
             dynamic obj = new
             {
-                addrs = senderAddr.ToString()
+                addrs = address
             };
 
-            string jsonUTXO = WebUtils.RequestApi(_log, "api/addrs/utxo", Newtonsoft.Json.JsonConvert.SerializeObject(obj));
+            string jsonUTXO = WebUtils.RequestApi(_log, "/addrs/utxo", Newtonsoft.Json.JsonConvert.SerializeObject(obj));
             List<UTXOResponse> uTXOResponse = WebUtils.ParseApiResponse<List<UTXOResponse>>(jsonUTXO);
 
+            _log.InfoFormat("Total amount unspent: {0} LTC", uTXOResponse.Sum(x => x.amount));
+            return uTXOResponse;
+        }
+
+        private Coin[] GetTxOuts(BitcoinAddress senderAddr, decimal sendAmount)
+        {
             List<Coin> coins = new List<Coin>();
             int idx = 0;
             while (coins.Sum(x => x.TxOut.Value.Satoshi) < LTC2Satoshi((long)sendAmount))
             {
-                TxOut txOut = new TxOut(new Money(uTXOResponse[idx].satoshis), senderAddr);
-                coins.Add(new Coin(new OutPoint(uint256.Parse(uTXOResponse[idx].txid), uTXOResponse[idx].vout), txOut));
+                TxOut txOut = new TxOut(new Money(_uTXOs[idx].satoshis), senderAddr);
+                coins.Add(new Coin(new OutPoint(uint256.Parse(_uTXOs[idx].txid), _uTXOs[idx].vout), txOut));
                 idx++;
             }
 
             return coins.ToArray();
         }
 
-        private static decimal CalcFee(decimal amount)
+        private decimal CalcFee(decimal amount)
         {
             return amount * decimal.Parse(ConfigurationManager.AppSettings["PercentFee"]) / 100;
+        }
+
+        public static string SignRawTransaction(string txHex)
+        {
+            Dictionary<string, object> rPCRequest = new Dictionary<string, object>()
+            {
+                { "jsonrpc", "1.0" },
+                { "id", "testid" },
+                { "method", "signrawtransaction" },
+                { "params", new List<string> {
+                    txHex
+                }
+            }};
+
+            string jsonRequest = Newtonsoft.Json.JsonConvert.SerializeObject(rPCRequest);
+            _log.Info("Request: " + jsonRequest);
+            string response = WebUtils.RequestRPC(_log, jsonRequest);
+            _log.Info("Response: " + response);
+
+            RPCResponse rpcResp = Newtonsoft.Json.JsonConvert.DeserializeObject<RPCResponse>(response);
+            if (rpcResp.error != null) return null;
+            return rpcResp.result.hex.ToString();
         }
 
         public static void SendRawTransaction(string signedHex)

@@ -72,11 +72,8 @@ namespace SpBlockChainSubscriber
                     StartServer();
                     break;
                 case "2":
-                    string receiveAddr;
-                    string amount;
-                    LitecoinTransaction.HandleInput(out receiveAddr, out amount);
-                    string txHex = LitecoinTransaction.CreateRawTransaction(receiveAddr, amount);
-                    LitecoinTransaction.SendRawTransaction(txHex);
+                    LitecoinTransaction litecoinTransaction = new LitecoinTransaction();
+                    litecoinTransaction.StartTransaction();
                     ShowMenu();
                     break;
 
